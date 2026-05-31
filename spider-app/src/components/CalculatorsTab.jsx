@@ -41,7 +41,7 @@ function calculateGreeks(S, K, T, r, sigma, type) {
     };
 }
 
-export default function CalculatorsTab() {
+export default function CalculatorsTab({ prices = {} }) {
     const [subTab, setSubTab] = useState('averaging');
 
     // Layout configuration for Chart grids
@@ -413,6 +413,87 @@ export default function CalculatorsTab() {
         ]
     };
 
+    // ==========================================
+    //  TAB 7: MARTINGALE CALCULATOR 2.0 (LIVE GRID)
+    // ==========================================
+    const [m2Asset, setM2Asset] = useState('BTC/USD');
+    const [m2ManualPrice, setM2ManualPrice] = useState(66500.00);
+    const [m2Dir, setM2Dir] = useState('long');
+    const [m2BaseSize, setM2BaseSize] = useState(10);
+    const [m2Multiplier, setM2Multiplier] = useState(2.0);
+    const [m2StepPct, setM2StepPct] = useState(2.0);
+    const [m2Levels, setM2Levels] = useState(6);
+    const [m2Tp, setM2Tp] = useState(1.5);
+
+    useEffect(() => {
+        if (m2Asset !== 'custom' && prices && prices[m2Asset]) {
+            setM2ManualPrice(prices[m2Asset]);
+        }
+    }, [prices, m2Asset]);
+
+    const isM2Short = m2Dir === 'short';
+    let m2Rows = [];
+    let m2TotalQty = 0;
+    let m2TotalCap = 0;
+
+    for (let i = 0; i < m2Levels; i++) {
+        const priceFactor = isM2Short ? (1 + (m2StepPct / 100) * i) : (1 - (m2StepPct / 100) * i);
+        const price = m2ManualPrice * priceFactor;
+        const qty = m2BaseSize * Math.pow(m2Multiplier, i);
+        const invest = price * qty;
+        m2TotalQty += qty;
+        m2TotalCap += invest;
+        const avgEntry = m2TotalCap / m2TotalQty;
+        const tpPrice = isM2Short ? avgEntry * (1 - m2Tp / 100) : avgEntry * (1 + m2Tp / 100);
+        m2Rows.push({
+            level: i + 1,
+            price,
+            qty,
+            invest,
+            cumCap: m2TotalCap,
+            cumQty: m2TotalQty,
+            avgEntry,
+            tpPrice
+        });
+    }
+
+    const m2FinalAvg = m2TotalCap / m2TotalQty || 0;
+    const m2FinalTp = isM2Short ? m2FinalAvg * (1 - m2Tp / 100) : m2FinalAvg * (1 + m2Tp / 100);
+    const m2MaxDrawdown = isM2Short 
+        ? ((m2Rows[m2Rows.length - 1]?.price - m2FinalAvg) / m2FinalAvg) * 100
+        : ((m2FinalAvg - m2Rows[m2Rows.length - 1]?.price) / m2FinalAvg) * 100 || 0;
+
+    const m2ChartData = {
+        labels: m2Rows.map(r => `Lvl ${r.level}`),
+        datasets: [
+            {
+                label: 'Trigger Price',
+                data: m2Rows.map(r => r.price),
+                borderColor: '#60a5fa',
+                backgroundColor: 'rgba(96, 165, 250, 0.05)',
+                borderWidth: 2,
+                fill: false,
+                tension: 0.1
+            },
+            {
+                label: 'Average Entry',
+                data: m2Rows.map(r => r.avgEntry),
+                borderColor: '#fbbf24',
+                borderWidth: 1.5,
+                borderDash: [5, 5],
+                fill: false
+            },
+            {
+                label: 'Take Profit Target',
+                data: m2Rows.map(r => r.tpPrice),
+                borderColor: '#34d399',
+                borderWidth: 1.5,
+                borderDash: [2, 2],
+                fill: false
+            }
+        ]
+    };
+
     return (
         <div className="fade-in">
             {/* Nav Headers inside tab */}
@@ -423,7 +504,8 @@ export default function CalculatorsTab() {
                     { key: 'grid', name: 'Grid Martingale', icon: <Grid size={14} /> },
                     { key: 'options', name: 'Options & Payoff', icon: <Zap size={14} /> },
                     { key: 'systems', name: 'Multi-System Sim', icon: <BarChart2 size={14} /> },
-                    { key: 'kelly', name: 'Kelly & DCA', icon: <PieChart size={14} /> }
+                    { key: 'kelly', name: 'Kelly & DCA', icon: <PieChart size={14} /> },
+                    { key: 'martingale2', name: 'Martingale 2.0', icon: <Zap size={14} /> }
                 ].map(item => (
                     <button 
                         key={item.key}
@@ -973,6 +1055,123 @@ export default function CalculatorsTab() {
                                 <div style={{ height: '230px' }}>
                                     <Bar data={kellyChartData} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { x: chartGridConfig, y: chartGridConfig } }} />
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {subTab === 'martingale2' && (
+                <div className="tab-content-grid">
+                    <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                        <div className="dir-toggle">
+                            <button className={`dir-btn ${m2Dir === 'long' ? 'active long' : ''}`} onClick={() => setM2Dir('long')}>Long Grid</button>
+                            <button className={`dir-btn ${m2Dir === 'short' ? 'active short' : ''}`} onClick={() => setM2Dir('short')}>Short Grid</button>
+                        </div>
+                        
+                        <div className="input-group">
+                            <label>Asset Select</label>
+                            <select value={m2Asset} onChange={(e) => setM2Asset(e.target.value)}>
+                                <option value="BTC/USD">Bitcoin (BTC/USD)</option>
+                                <option value="ETH/USD">Ethereum (ETH/USD)</option>
+                                <option value="EUR/USD">EUR/USD</option>
+                                <option value="GBP/USD">GBP/USD</option>
+                                <option value="GOLD">Gold (Commodities)</option>
+                                <option value="SILVER">Silver (Commodities)</option>
+                                <option value="custom">Custom (Manual Entry)</option>
+                            </select>
+                        </div>
+
+                        <div className="input-group">
+                            <label>Base Price ({m2Asset === 'custom' ? 'Manual' : 'Live Sync'})</label>
+                            <input 
+                                type="number" 
+                                value={m2ManualPrice} 
+                                disabled={m2Asset !== 'custom'} 
+                                onChange={(e) => setM2ManualPrice(parseFloat(e.target.value) || 0)} 
+                            />
+                        </div>
+
+                        <div className="input-group">
+                            <label>Base Sizing (Contracts/Lots)</label>
+                            <input type="number" value={m2BaseSize} onChange={(e) => setM2BaseSize(parseFloat(e.target.value) || 0)} />
+                        </div>
+
+                        <div className="input-group">
+                            <label>Martingale Multiplier: {m2Multiplier.toFixed(1)}×</label>
+                            <input type="range" min="1.1" max="3.0" step="0.1" value={m2Multiplier} onChange={(e) => setM2Multiplier(parseFloat(e.target.value) || 1.1)} style={{ width: '100%' }} />
+                        </div>
+
+                        <div className="input-group">
+                            <label>Grid Spacing Interval: {m2StepPct.toFixed(1)}%</label>
+                            <input type="range" min="0.5" max="10.0" step="0.5" value={m2StepPct} onChange={(e) => setM2StepPct(parseFloat(e.target.value) || 0.5)} style={{ width: '100%' }} style={{ width: '100%' }} />
+                        </div>
+
+                        <div className="input-group">
+                            <label>Safety Levels (Max Nodes): {m2Levels}</label>
+                            <input type="range" min="2" max="10" value={m2Levels} onChange={(e) => setM2Levels(parseInt(e.target.value) || 2)} style={{ width: '100%' }} />
+                        </div>
+
+                        <div className="input-group">
+                            <label>Take Profit Target: {m2Tp.toFixed(1)}%</label>
+                            <input type="range" min="0.5" max="10.0" step="0.5" value={m2Tp} onChange={(e) => setM2Tp(parseFloat(e.target.value) || 0.5)} style={{ width: '100%' }} />
+                        </div>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+                        <div className="grid-cols-4">
+                            <div className="card" style={{ padding: '1rem' }}>
+                                <span style={{ fontSize: '0.65rem', color: 'var(--muted)' }}>Cumulative Entry Cost</span>
+                                <div style={{ fontSize: '1.15rem', fontWeight: 800, fontFamily: 'var(--font-mono)' }}>{FMT(m2TotalCap)}</div>
+                            </div>
+                            <div className="card" style={{ padding: '1rem' }}>
+                                <span style={{ fontSize: '0.65rem', color: 'var(--muted)' }}>Average Entry Cost</span>
+                                <div style={{ fontSize: '1.15rem', fontWeight: 800, fontFamily: 'var(--font-mono)' }}>{FMTFloat(m2FinalAvg)}</div>
+                            </div>
+                            <div className="card" style={{ padding: '1rem' }}>
+                                <span style={{ fontSize: '0.65rem', color: 'var(--muted)' }}>Take Profit Price</span>
+                                <div style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--green)', fontFamily: 'var(--font-mono)' }}>{FMTFloat(m2FinalTp)}</div>
+                            </div>
+                            <div className="card" style={{ padding: '1rem' }}>
+                                <span style={{ fontSize: '0.65rem', color: 'var(--muted)' }}>Max Drawdown Risk</span>
+                                <div style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--red)', fontFamily: 'var(--font-mono)' }}>{m2MaxDrawdown.toFixed(2)}%</div>
+                            </div>
+                        </div>
+
+                        <div className="card" style={{ flex: 1, minHeight: '260px' }}>
+                            <div className="card-title">Martingale 2.0 Sizing Projection Curve</div>
+                            <div style={{ height: '220px' }}>
+                                <Line data={m2ChartData} options={{ responsive: true, maintainAspectRatio: false, scales: { x: chartGridConfig, y: chartGridConfig } }} />
+                            </div>
+                        </div>
+
+                        <div className="card">
+                            <div className="card-title">Grid Orders Execution Flow Map</div>
+                            <div className="table-container">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Level</th>
+                                            <th>Trigger Price</th>
+                                            <th>Step Lot Qty</th>
+                                            <th>Level Margin Cost</th>
+                                            <th>Cumulative Avg Cost</th>
+                                            <th>Weighted TP Price</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {m2Rows.map(r => (
+                                            <tr key={r.level}>
+                                                <td><span className="badge badge-teal">Node {r.level}</span></td>
+                                                <td style={{ fontFamily: 'var(--font-mono)' }}>{FMTFloat(r.price)}</td>
+                                                <td>{r.qty.toFixed(2)}</td>
+                                                <td>{FMT(r.invest)}</td>
+                                                <td style={{ color: 'var(--amber)', fontFamily: 'var(--font-mono)' }}>{FMTFloat(r.avgEntry)}</td>
+                                                <td style={{ color: 'var(--green)', fontFamily: 'var(--font-mono)' }}>{FMTFloat(r.tpPrice)}</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
                             </div>
                         </div>
                     </div>

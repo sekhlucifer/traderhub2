@@ -251,7 +251,7 @@ export default function App() {
           )}
 
           {activeTab === 'calculators' && (
-            <CalculatorsTab />
+            <CalculatorsTab prices={prices} />
           )}
 
           {activeTab === 'practice' && (
